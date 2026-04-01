@@ -1,0 +1,5 @@
+{
+  "name": "Advanced Scientific Calculator",
+  "description": "A high-fidelity, functional scientific calculator inspired by the Casio fx-991ES PLUS, featuring Natural V.P.A.M. display and advanced calculus/matrix functions.",
+  "requestFramePermissions": []
+}

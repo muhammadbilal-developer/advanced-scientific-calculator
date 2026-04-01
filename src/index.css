@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Trebuchet MS", "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", monospace;
+  --font-lcd: "Digital-7", "Courier New", Courier, monospace;
+
+  --color-calc-body: #d7dbe2;
+  --color-calc-rim: #223047;
+  --color-calc-screen: #c8d1c0;
+  --color-calc-screen-ink: #2f4039;
+  --color-calc-navy: #193453;
+  --color-calc-label: #505967;
+  --color-calc-solar: #6d251d;
+}
+
+@font-face {
+  font-family: "Digital-7";
+  src: url("https://fonts.cdnfonts.com/s/14352/digital-7.woff") format("woff");
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    background: #e8ebf0;
+  }
+
+  body {
+    margin: 0;
+  }
+
+  button {
+    font: inherit;
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
