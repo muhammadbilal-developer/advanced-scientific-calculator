@@ -1,7 +1,7 @@
 # Advanced Scientific Calculator
 
 <div align="center">
-  <img src="./screenshot/main%20pages.png" alt="Advanced Scientific Calculator screenshot" width="520" />
+  <img src="./screenshot/main%20pages.png" alt="Advanced Scientific Calculator screenshot" width="1000" />
 </div>
 
 A responsive scientific calculator UI inspired by a classic Casio-style layout. It includes a realistic keypad, degree-based trigonometry, memory functions, keyboard support, and a compact mobile-friendly shell.
