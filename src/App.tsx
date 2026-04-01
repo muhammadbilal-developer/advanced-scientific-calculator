@@ -4,25 +4,24 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import * as math from 'mathjs';
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { cn } from './lib/utils';
+import { CalculatorControls } from './components/CalculatorControls';
+import { CalculatorKeypad } from './components/CalculatorKeypad';
+import {
+  addToMemory,
+  applyOperatorInput,
+  evaluateCalculatorExpression,
+  INITIAL_DISPLAY,
+  INITIAL_RESULT,
+  insertAtCursor,
+  type CalcKey,
+  type UtilityButton,
+  resolveEngineeringText,
+  resolveMemoryAddition,
+  resolveRecallText,
+} from './lib/calculator';
 
-type KeyType = 'number' | 'operator' | 'function' | 'action' | 'memory' | 'special';
 type Mode = 'COMP' | 'MATRIX' | 'STAT';
-
-interface CalcKey {
-  label: string;
-  legend?: string;
-  value: string;
-  type: KeyType;
-  action?: () => void;
-}
-
-const INITIAL_DISPLAY = '65';
-const INITIAL_RESULT = '65';
-const OPERATORS = new Set(['+', '-', '×', '÷']);
 
 export default function App() {
   const [display, setDisplay] = useState(INITIAL_DISPLAY);
@@ -34,7 +33,58 @@ export default function App() {
   const [alpha, setAlpha] = useState(false);
   const [mode, setMode] = useState<Mode>('COMP');
   const [hasEdited, setHasEdited] = useState(false);
+  const [lastAnswer, setLastAnswer] = useState('0');
+  const [memoryValue, setMemoryValue] = useState('0');
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const isSuperscriptCharacter = (character: string) => /^[A-Za-z0-9.+\-]$/.test(character);
+
+  const getDisplayCharacterClass = (characters: string[], index: number): string => {
+    const character = characters[index];
+    const previous = characters[index - 1] ?? '';
+
+    let exponentDepth = 0;
+    for (let current = 0; current < index; current += 1) {
+      if (characters[current] === '^') {
+        exponentDepth += 1;
+        continue;
+      }
+
+      if (exponentDepth > 0) {
+        if (characters[current] === '(') {
+          exponentDepth += 1;
+          continue;
+        }
+
+        if (characters[current] === ')') {
+          exponentDepth = Math.max(0, exponentDepth - 1);
+          continue;
+        }
+
+        if (
+          exponentDepth === 1 &&
+          !isSuperscriptCharacter(characters[current]) &&
+          characters[current] !== '.'
+        ) {
+          exponentDepth = 0;
+        }
+      }
+    }
+
+    if (character === '^') {
+      return 'text-[18px] -translate-y-2';
+    }
+
+    if (exponentDepth > 0 && (isSuperscriptCharacter(character) || character === '(' || character === ')')) {
+      return 'text-[18px] -translate-y-2';
+    }
+
+    if (previous === '^' && character === '(') {
+      return 'text-[18px] -translate-y-2';
+    }
+
+    return '';
+  };
 
   const cycleMode = () => {
     setMode((current) => {
@@ -62,24 +112,40 @@ export default function App() {
 
   const calculate = () => {
     try {
-      const expression = display
-        .replace(/\u00d7/g, '*')
-        .replace(/\u00f7/g, '/')
-        .replace(/\u03c0/g, 'pi')
-        .replace(/\u221a/g, 'sqrt')
-        .replace(/Ans/g, result || '0');
-
-      const evaluation = math.evaluate(expression);
-      const formatted =
-        typeof evaluation === 'number'
-          ? Number(evaluation.toFixed(10)).toString()
-          : evaluation.toString();
-
+      const expression = display.trim();
+      const formatted = evaluateCalculatorExpression(expression, lastAnswer);
       setResult(formatted);
-      setHistory((prev) => [{ expr: display, res: formatted }, ...prev].slice(0, 12));
+      setLastAnswer(formatted);
+      setHistory((prev) => [{ expr: expression, res: formatted }, ...prev].slice(0, 12));
+      setDisplay('');
+      setCursorPos(0);
+      setHasEdited(true);
+      setShift(false);
+      setAlpha(false);
     } catch {
       setResult('Syntax ERROR');
     }
+  };
+
+  const commitDisplayText = (text: string) => {
+    const shouldReplaceDemo = !hasEdited && display === INITIAL_DISPLAY && result === INITIAL_RESULT;
+    const next = insertAtCursor(display, cursorPos, text, shouldReplaceDemo);
+    setDisplay(next.display);
+    setCursorPos(next.cursorPos);
+    setResult(null);
+    setHasEdited(true);
+    setShift(false);
+    setAlpha(false);
+  };
+
+  const loadFromHistory = (item: { expr: string; res: string }) => {
+    setDisplay(item.expr);
+    setResult(item.res);
+    setCursorPos(item.expr.length);
+    setHasEdited(true);
+    setShift(false);
+    setAlpha(false);
+    setShowHistory(false);
   };
 
   const handleKeyPress = (key: CalcKey) => {
@@ -102,37 +168,57 @@ export default function App() {
           setHasEdited(true);
         }
       } else if (key.value === '=') {
+        if (display.trim().length === 0) {
+          setDisplay(lastAnswer);
+          setCursorPos(lastAnswer.length);
+          setResult(lastAnswer);
+          setHasEdited(true);
+          return;
+        }
+
         calculate();
       }
       return;
     }
 
-    if (key.type === 'operator') {
-      if (display.length === 0) {
-        if (key.value === '-') {
-          setDisplay('-');
-          setCursorPos(1);
-        }
-
-        setResult(null);
-        setHasEdited(true);
-        setShift(false);
-        setAlpha(false);
+    if (key.type === 'memory') {
+      if (key.value === 'Ans') {
+        commitDisplayText(lastAnswer);
         return;
       }
 
-      const isCursorAfterOperator = cursorPos > 0 && OPERATORS.has(display[cursorPos - 1] || '');
-      const isCursorOnOperator = cursorPos < display.length && OPERATORS.has(display[cursorPos] || '');
-      const replaceIndex = isCursorAfterOperator ? cursorPos - 1 : isCursorOnOperator ? cursorPos : -1;
+      if (key.value === 'RCL') {
+        commitDisplayText(resolveRecallText(memoryValue, lastAnswer));
+        return;
+      }
 
-      if (replaceIndex >= 0) {
-        const nextDisplay = display.slice(0, replaceIndex) + key.value + display.slice(replaceIndex + 1);
-        setDisplay(nextDisplay);
-        setCursorPos(replaceIndex + 1);
-      } else {
-        const nextDisplay = display.slice(0, cursorPos) + key.value + display.slice(cursorPos);
-        setDisplay(nextDisplay);
-        setCursorPos(cursorPos + key.value.length);
+      if (key.value === 'M+') {
+        const currentValue = resolveMemoryAddition(display, result, lastAnswer);
+        if (currentValue !== null) {
+          setMemoryValue((current) => addToMemory(current, currentValue));
+        }
+        return;
+      }
+
+      if (key.value === 'ENG') {
+        const engineering = resolveEngineeringText(display, result, lastAnswer);
+        if (engineering !== null) {
+          setDisplay(engineering);
+          setCursorPos(engineering.length);
+          setResult(null);
+          setHasEdited(true);
+          setShift(false);
+          setAlpha(false);
+        }
+        return;
+      }
+    }
+
+    if (key.type === 'operator') {
+      const next = applyOperatorInput(display, cursorPos, key.value);
+      if (next.changed) {
+        setDisplay(next.display);
+        setCursorPos(next.cursorPos);
       }
 
       setResult(null);
@@ -142,17 +228,7 @@ export default function App() {
       return;
     }
 
-    const shouldReplaceDemo = !hasEdited && display === INITIAL_DISPLAY && result === INITIAL_RESULT;
-    const nextDisplay = shouldReplaceDemo
-      ? key.value
-      : display.slice(0, cursorPos) + key.value + display.slice(cursorPos);
-
-    setDisplay(nextDisplay);
-    setCursorPos(shouldReplaceDemo ? key.value.length : cursorPos + key.value.length);
-    setResult(null);
-    setHasEdited(true);
-    setShift(false);
-    setAlpha(false);
+    commitDisplayText(key.value);
   };
 
   useEffect(() => {
@@ -195,7 +271,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [cursorPos, display, hasEdited, result]);
+  }, [cursorPos, display, hasEdited, result, lastAnswer, memoryValue]);
 
   useEffect(() => {
     if (!scrollRef.current) {
@@ -205,7 +281,7 @@ export default function App() {
     scrollRef.current.scrollLeft = Math.max(0, cursorPos * 14 - 140);
   }, [cursorPos, display]);
 
-  const leftUtilityButtons = [
+  const leftButtons: UtilityButton[] = [
     {
       label: 'OPTN',
       action: () => setShowHistory((current) => !current),
@@ -218,7 +294,7 @@ export default function App() {
     },
   ];
 
-  const rightUtilityButtons = [
+  const rightButtons: UtilityButton[] = [
     {
       label: 'MODE',
       action: cycleMode,
@@ -354,10 +430,13 @@ export default function App() {
               }}
             >
               <div className="flex min-h-[40px] items-center">
-                {display.split('').map((character, index) => (
+                {display.split('').map((character, index, characters) => (
                   <span
                     key={`${character}-${index}`}
-                    className="relative inline-flex min-w-[12px] justify-center"
+                    className={`relative inline-flex min-w-[12px] justify-center ${getDisplayCharacterClass(
+                      characters,
+                      index
+                    )}`}
                     onClick={(event) => {
                       event.stopPropagation();
                       setCursorPos(index);
@@ -407,10 +486,15 @@ export default function App() {
                   ) : (
                     <div className="space-y-2 text-right text-calc-screen-ink">
                       {history.map((item, index) => (
-                        <div key={`${item.expr}-${index}`} className="border-b border-calc-screen-ink/10 pb-1">
+                        <button
+                          key={`${item.expr}-${index}`}
+                          type="button"
+                          className="block w-full border-b border-calc-screen-ink/10 pb-1 text-right transition-colors hover:bg-calc-screen-ink/5"
+                          onClick={() => loadFromHistory(item)}
+                        >
                           <div className="text-[10px] opacity-70">{item.expr}</div>
                           <div className="text-sm font-bold">{item.res}</div>
-                        </div>
+                        </button>
                       ))}
                     </div>
                   )}
@@ -421,87 +505,15 @@ export default function App() {
             <div className="pointer-events-none absolute inset-0 opacity-[0.06] [background-image:radial-gradient(circle,_#000_14%,_transparent_15%)] [background-size:3px_3px]" />
           </div>
 
-          <div className="mb-5 grid grid-cols-[54px_1fr_54px] items-center gap-2">
-            <div className="rounded-[20px] bg-white/20 px-1.5 py-2 shadow-[inset_0_1px_4px_rgba(255,255,255,0.24)]">
-              <div className="flex flex-col gap-2">
-                {leftUtilityButtons.map((button) => (
-                  <button
-                    key={button.label}
-                    onClick={button.action}
-                    className={cn(
-                      'relative h-8 rounded-lg bg-calc-navy px-1 text-[9px] font-bold tracking-[0.1em] text-white shadow-[0_4px_0_rgba(11,22,38,0.22)] transition-transform active:translate-y-[2px] active:shadow-[0_2px_0_rgba(11,22,38,0.22)]',
-                      button.active && 'bg-[#244872]'
-                    )}
-                  >
-                    <span className="relative">{button.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
+          <CalculatorControls
+            leftButtons={leftButtons}
+            rightButtons={rightButtons}
+            onHistoryToggle={() => setShowHistory((current) => !current)}
+            onMoveLeft={() => moveCursor('left')}
+            onMoveRight={() => moveCursor('right')}
+          />
 
-            <div className="relative flex justify-center">
-              <div className="h-[92px] w-[92px] rounded-full border-[5px] border-[#7e7f82] bg-[#97989a] shadow-[0_9px_14px_rgba(58,61,66,0.24)]">
-                <button
-                  className="absolute left-1/2 top-[6px] -translate-x-1/2 text-[#5e6165] transition-colors hover:text-[#404347]"
-                  onClick={() => setShowHistory((current) => !current)}
-                >
-                  <ChevronUp size={18} />
-                </button>
-                <button
-                  className="absolute bottom-[6px] left-1/2 -translate-x-1/2 text-[#5e6165] transition-colors hover:text-[#404347]"
-                >
-                  <ChevronDown size={18} />
-                </button>
-                <button
-                  className="absolute left-[6px] top-1/2 -translate-y-1/2 text-[#5e6165] transition-colors hover:text-[#404347]"
-                  onClick={() => moveCursor('left')}
-                >
-                  <ChevronLeft size={18} />
-                </button>
-                <button
-                  className="absolute right-[6px] top-1/2 -translate-y-1/2 text-[#5e6165] transition-colors hover:text-[#404347]"
-                  onClick={() => moveCursor('right')}
-                >
-                  <ChevronRight size={18} />
-                </button>
-                <div className="flex h-full items-center justify-center text-[11px] font-black uppercase tracking-[0.2em] text-[#5a5d61]">
-                  Replay
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-[20px] bg-white/20 px-1.5 py-2 shadow-[inset_0_1px_4px_rgba(255,255,255,0.24)]">
-              <div className="flex flex-col gap-2">
-                {rightUtilityButtons.map((button) => (
-                  <button
-                    key={button.label}
-                    onClick={button.action}
-                    className={cn(
-                      'relative h-8 rounded-lg bg-calc-navy px-1 text-[9px] font-bold tracking-[0.1em] text-white shadow-[0_4px_0_rgba(11,22,38,0.22)] transition-transform active:translate-y-[2px] active:shadow-[0_2px_0_rgba(11,22,38,0.22)]',
-                      button.active && 'bg-[#244872]'
-                    )}
-                  >
-                    <span className="relative">{button.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-5 gap-x-1.5 gap-y-1.5">
-            {keys.map((key) => (
-              <div key={`${key.label}-${key.legend || 'plain'}`} className="min-h-[44px]">
-                <button
-                  onClick={() => handleKeyPress(key)}
-                  className="relative h-8 w-full rounded-[9px] bg-calc-navy text-white shadow-[0_4px_0_rgba(11,22,38,0.22)] transition-transform active:translate-y-[2px] active:shadow-[0_2px_0_rgba(11,22,38,0.22)]"
-                >
-                  <span className={cn('relative font-bold uppercase', keyTextClass(key))}>
-                    {key.label}
-                  </span>
-                </button>
-              </div>
-            ))}
-          </div>
+          <CalculatorKeypad keys={keys} onPress={handleKeyPress} keyTextClass={keyTextClass} />
         </div>
       </motion.div>
     </div>
