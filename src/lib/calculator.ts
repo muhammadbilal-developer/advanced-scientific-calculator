@@ -33,6 +33,8 @@ export const normalizeExpression = (display: string, lastAnswer: string): string
   display
     .replace(/\u00d7/g, '*')
     .replace(/\u00f7/g, '/')
+    .replace(/\{/g, '(')
+    .replace(/\}/g, ')')
     .replace(/\u03c0/g, 'pi')
     .replace(/\u221a/g, 'sqrt')
     .replace(/Ans/g, lastAnswer)
@@ -40,13 +42,40 @@ export const normalizeExpression = (display: string, lastAnswer: string): string
     .replace(/\bln\(/g, 'log(')
     .replace(/\bsin\(/g, 'sinDeg(')
     .replace(/\bcos\(/g, 'cosDeg(')
-    .replace(/\btan\(/g, 'tanDeg(');
+    .replace(/\btan\(/g, 'tanDeg(')
+    .replace(/\basin\(/g, 'asinDeg(')
+    .replace(/\bacos\(/g, 'acosDeg(')
+    .replace(/\batan\(/g, 'atanDeg(')
+    .replace(/\bdeg\(/g, 'degFn(')
+    .replace(/\brand\(/g, 'randFn(')
+    .replace(/\bnPr\(/g, 'nPrFn(')
+    .replace(/\bnCr\(/g, 'nCrFn(')
+    .replace(/\bpol\(/g, 'polFn(')
+    .replace(/\brec\(/g, 'recFn(');
 
 export const evaluateCalculatorExpression = (display: string, lastAnswer: string): string => {
   const scope = {
     sinDeg: (value: number) => Math.sin((value * Math.PI) / 180),
     cosDeg: (value: number) => Math.cos((value * Math.PI) / 180),
     tanDeg: (value: number) => Math.tan((value * Math.PI) / 180),
+    asinDeg: (value: number) => (Math.asin(value) * 180) / Math.PI,
+    acosDeg: (value: number) => (Math.acos(value) * 180) / Math.PI,
+    atanDeg: (value: number) => (Math.atan(value) * 180) / Math.PI,
+    degFn: (value: number) => value,
+    randFn: () => Math.random(),
+    nPrFn: (n: number, r: number) => math.permutations(n, r),
+    nCrFn: (n: number, r: number) => math.combinations(n, r),
+    polFn: (x: number, y: number) => {
+      const radius = Math.hypot(x, y);
+      const angle = (Math.atan2(y, x) * 180) / Math.PI;
+      return [Number(radius.toFixed(10)), Number(angle.toFixed(10))];
+    },
+    recFn: (radius: number, angleDegrees: number) => {
+      const angleRadians = (angleDegrees * Math.PI) / 180;
+      const x = radius * Math.cos(angleRadians);
+      const y = radius * Math.sin(angleRadians);
+      return [Number(x.toFixed(10)), Number(y.toFixed(10))];
+    },
     log10: (value: number) => Math.log10(value),
   };
 

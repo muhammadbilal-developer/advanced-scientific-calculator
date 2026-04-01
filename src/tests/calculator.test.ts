@@ -42,10 +42,33 @@ describe('calculator helpers', () => {
     ['sin(30)', '0', '0.5'],
     ['cos(60)', '0', '0.5'],
     ['tan(45)', '0', '1'],
+    ['asin(0.5)', '0', '30'],
+    ['acos(0.5)', '0', '60'],
+    ['atan(1)', '0', '45'],
     ['log(100)', '0', '2'],
     ['ln(1)', '0', '0'],
   ])('evaluates trig/log expression %s', (expression, lastAnswer, expected) => {
     expect(evaluateCalculatorExpression(expression, lastAnswer)).toBe(expected);
+  });
+
+  it.each([
+    ['nPr(5,2)', '0', '20'],
+    ['nCr(5,2)', '0', '10'],
+    ['pol(3,4)', '0', '5,53.1301023542'],
+    ['rec(5,53.1301023542)', '0', '3,4'],
+  ])('evaluates shift scientific function %s', (expression, lastAnswer, expected) => {
+    expect(evaluateCalculatorExpression(expression, lastAnswer)).toBe(expected);
+  });
+
+  it('evaluates random function as finite number', () => {
+    const value = Number(evaluateCalculatorExpression('rand()', '0'));
+    expect(Number.isFinite(value)).toBe(true);
+    expect(value).toBeGreaterThanOrEqual(0);
+    expect(value).toBeLessThan(1);
+  });
+
+  it('normalizes curly braces as parentheses', () => {
+    expect(evaluateCalculatorExpression('{2+3}×4', '0')).toBe('20');
   });
 
   it('substitutes Ans with the last computed answer', () => {

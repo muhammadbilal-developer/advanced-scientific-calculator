@@ -138,6 +138,22 @@ export default function App() {
     setAlpha(false);
   };
 
+  const commitFunctionText = (text: string) => {
+    if (!text.endsWith('(')) {
+      commitDisplayText(text);
+      return;
+    }
+
+    const shouldReplaceDemo = !hasEdited && display === INITIAL_DISPLAY && result === INITIAL_RESULT;
+    const next = insertAtCursor(display, cursorPos, `${text})`, shouldReplaceDemo);
+    setDisplay(next.display);
+    setCursorPos(Math.max(0, next.cursorPos - 1));
+    setResult(null);
+    setHasEdited(true);
+    setShift(false);
+    setAlpha(false);
+  };
+
   const loadFromHistory = (item: { expr: string; res: string }) => {
     setDisplay(item.expr);
     setResult(item.res);
@@ -148,26 +164,86 @@ export default function App() {
     setShowHistory(false);
   };
 
+  const resolveShiftedValue = (key: CalcKey): string | null => {
+    switch (key.label) {
+      case 'sin':
+        return 'asin(';
+      case 'cos':
+        return 'acos(';
+      case 'tan':
+        return 'atan(';
+      case 'log':
+        return '10^(';
+      case 'ln':
+        return 'e^(';
+      case '√':
+        return 'cbrt(';
+      case 'x^2':
+        return 'nthRoot(';
+      case '(':
+        return '{';
+      case ')':
+        return '}';
+      case 'Ans':
+        return 'deg(';
+      case '2':
+        return 'rand(';
+      case '0':
+        return ',';
+      case '×':
+        return 'nPr(';
+      case '÷':
+        return 'nCr(';
+      case '+':
+        return 'pol(';
+      case '-':
+        return 'rec(';
+      default:
+        return null;
+    }
+  };
+
   const handleKeyPress = (key: CalcKey) => {
+    if (shift && key.value === 'AC') {
+      setDisplay('');
+      setResult(null);
+      setCursorPos(0);
+      setShowHistory(false);
+      setHasEdited(true);
+      setShift(false);
+      setAlpha(false);
+      return;
+    }
+
+    const shiftedValue = shift ? resolveShiftedValue(key) : null;
+    const effectiveKey =
+      shiftedValue === null
+        ? key
+        : ({
+            ...key,
+            value: shiftedValue,
+            type: shiftedValue === '{' || shiftedValue === '}' ? 'operator' : 'function',
+          } satisfies CalcKey);
+
     if (key.action) {
       key.action();
       return;
     }
 
-    if (key.type === 'action') {
-      if (key.value === 'AC') {
+    if (effectiveKey.type === 'action') {
+      if (effectiveKey.value === 'AC') {
         setDisplay('');
         setResult(null);
         setCursorPos(0);
         setHasEdited(true);
-      } else if (key.value === 'DEL') {
+      } else if (effectiveKey.value === 'DEL') {
         if (cursorPos > 0) {
           const nextDisplay = display.slice(0, cursorPos - 1) + display.slice(cursorPos);
           setDisplay(nextDisplay);
           setCursorPos(cursorPos - 1);
           setHasEdited(true);
         }
-      } else if (key.value === '=') {
+      } else if (effectiveKey.value === '=') {
         if (display.trim().length === 0) {
           setDisplay(lastAnswer);
           setCursorPos(lastAnswer.length);
@@ -181,18 +257,18 @@ export default function App() {
       return;
     }
 
-    if (key.type === 'memory') {
-      if (key.value === 'Ans') {
+    if (effectiveKey.type === 'memory') {
+      if (effectiveKey.value === 'Ans') {
         commitDisplayText(lastAnswer);
         return;
       }
 
-      if (key.value === 'RCL') {
+      if (effectiveKey.value === 'RCL') {
         commitDisplayText(resolveRecallText(memoryValue, lastAnswer));
         return;
       }
 
-      if (key.value === 'M+') {
+      if (effectiveKey.value === 'M+') {
         const currentValue = resolveMemoryAddition(display, result, lastAnswer);
         if (currentValue !== null) {
           setMemoryValue((current) => addToMemory(current, currentValue));
@@ -200,7 +276,7 @@ export default function App() {
         return;
       }
 
-      if (key.value === 'ENG') {
+      if (effectiveKey.value === 'ENG') {
         const engineering = resolveEngineeringText(display, result, lastAnswer);
         if (engineering !== null) {
           setDisplay(engineering);
@@ -214,8 +290,8 @@ export default function App() {
       }
     }
 
-    if (key.type === 'operator') {
-      const next = applyOperatorInput(display, cursorPos, key.value);
+    if (effectiveKey.type === 'operator') {
+      const next = applyOperatorInput(display, cursorPos, effectiveKey.value);
       if (next.changed) {
         setDisplay(next.display);
         setCursorPos(next.cursorPos);
@@ -228,7 +304,12 @@ export default function App() {
       return;
     }
 
-    commitDisplayText(key.value);
+    if (effectiveKey.type === 'function' && effectiveKey.value.endsWith('(')) {
+      commitFunctionText(effectiveKey.value);
+      return;
+    }
+
+    commitDisplayText(effectiveKey.value);
   };
 
   useEffect(() => {
@@ -277,8 +358,21 @@ export default function App() {
     if (!scrollRef.current) {
       return;
     }
+    const expressionDisplay = scrollRef.current;
+    const cursorPixel = cursorPos * 14;
+    const leftEdge = expressionDisplay.scrollLeft;
+    const rightEdge = leftEdge + expressionDisplay.clientWidth;
+    const gutter = 28;
 
-    scrollRef.current.scrollLeft = Math.max(0, cursorPos * 14 - 140);
+    if (cursorPixel + gutter > rightEdge) {
+      expressionDisplay.scrollLeft = cursorPixel - expressionDisplay.clientWidth + gutter;
+    } else if (cursorPixel - gutter < leftEdge) {
+      expressionDisplay.scrollLeft = Math.max(0, cursorPixel - gutter);
+    }
+
+    if (cursorPos === display.length) {
+      expressionDisplay.scrollLeft = expressionDisplay.scrollWidth;
+    }
   }, [cursorPos, display]);
 
   const leftButtons: UtilityButton[] = [
@@ -317,23 +411,23 @@ export default function App() {
     { label: 'CALC', legend: 'SOLVE', value: 'calc(', type: 'function' },
     { label: '\u222bdx', legend: 'd/dx', value: 'integrate(', type: 'function' },
     { label: 'x^-1', legend: 'x!', value: '^-1', type: 'function' },
-    { label: 'log', legend: 'log_a', value: 'log(', type: 'function' },
+    { label: 'log', legend: '10ˣ', value: 'log(', type: 'function' },
 
     { label: '\u221a', legend: '\u221b', value: 'sqrt(', type: 'function' },
-    { label: 'x^2', legend: 'x^3', value: '^2', type: 'function' },
+    { label: 'x^2', legend: 'ˣ√', value: '^2', type: 'function' },
     { label: 'x^y', legend: 'y\u221ax', value: '^', type: 'function' },
     { label: 'ln', legend: 'e^x', value: 'ln(', type: 'function' },
     { label: '(-)', legend: 'A', value: '-', type: 'number' },
 
     { label: 'hyp', legend: 'C', value: 'hyp(', type: 'function' },
-    { label: 'sin', legend: 'D', value: 'sin(', type: 'function' },
-    { label: 'cos', legend: 'E', value: 'cos(', type: 'function' },
-    { label: 'tan', legend: 'F', value: 'tan(', type: 'function' },
+    { label: 'sin', legend: 'sin⁻¹', value: 'sin(', type: 'function' },
+    { label: 'cos', legend: 'cos⁻¹', value: 'cos(', type: 'function' },
+    { label: 'tan', legend: 'tan⁻¹', value: 'tan(', type: 'function' },
     { label: 'RCL', legend: 'STO', value: 'RCL', type: 'memory' },
 
     { label: 'ENG', legend: '\u2190', value: 'ENG', type: 'memory' },
-    { label: '(', legend: '%', value: '(', type: 'operator' },
-    { label: ')', legend: ',', value: ')', type: 'operator' },
+    { label: '(', legend: '{', value: '(', type: 'operator' },
+    { label: ')', legend: '}', value: ')', type: 'operator' },
     { label: 'S\u21d4D', legend: 'a b/c', value: 'S<->D', type: 'function' },
     { label: 'M+', legend: 'M', value: 'M+', type: 'memory' },
 
@@ -355,7 +449,7 @@ export default function App() {
     { label: '+', legend: 'Pol', value: '+', type: 'operator' },
     { label: '-', legend: 'Rec', value: '-', type: 'operator' },
 
-    { label: '0', value: '0', type: 'number' },
+    { label: '0', legend: ',', value: '0', type: 'number' },
     { label: '.', value: '.', type: 'number' },
     { label: 'x10^', value: '*10^', type: 'function' },
     { label: 'Ans', legend: 'DRG', value: 'Ans', type: 'memory' },
